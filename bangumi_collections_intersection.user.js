@@ -38,28 +38,6 @@
         return null;
     }
 
-    // check cache expiry time with input user id
-    function checkCacheExpiryTime(key) {
-        const raw = localStorage.getItem(key);
-        if (!raw) {
-            return null;
-        }
-        try {
-            const cache = JSON.parse(raw);
-            if (cache.expiryTime <= Date.now()) {
-                // console.log("Cache expired");
-                localStorage.removeItem(key);
-                return null;
-            } else {
-                // console.log("Use cache");
-                return cache.collections;
-            }
-        } catch (error) {
-            localStorage.removeItem(key); // usually issue on raw data
-            console.error(error);
-        }
-    }
-
     // Manage cache: get cache, if cache is corrupted, remove cache
     function getFullCache() {
         const raw = localStorage.getItem("user_collections_cache");
