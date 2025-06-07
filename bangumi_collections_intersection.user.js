@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bgm.tv 收藏对比工具
 // @namespace    https://github.com/DustRespirator
-// @version      0.2
+// @version      0.3
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
@@ -12,9 +12,16 @@
     "use strict";
 
     // Fixed configuration
-    const limit = 50;
+    const LIMIT = 50;
     const myUsernameSelector = "#headerNeue2 .headerNeueInner.clearit .idBadgerNeue a.avatar";
     const friendUsernameSelector = "#headerProfile .subjectNav .headerContainer .nameSingle .headerAvatar a.avatar";
+
+    // Initialize cache if needed
+    (function initCacheIfNeeded() {
+        if (!localStorage.getItem("user_collections_cache")) {
+            setFullCache({ cachedUsers: [], userData: {} });
+        }
+    })();
 
     // Extract username from a href ("/user/username" or "https://bgm.tv/user/username")
     function extractUsernameFromHref(href) {
@@ -53,27 +60,58 @@
         }
     }
 
+    // Manage cache: get cache, if cache is corrupted, remove cache
+    function getFullCache() {
+        const raw = localStorage.getItem("user_collections_cache");
+        if (!raw) {
+            return { cachedUsers: [], userData: {} };
+        }
+        try {
+            return JSON.parse(raw);
+        } catch (error) {
+            console.error("Corrupt cache. Clearing...");
+            localStorage.removeItem("user_collections_cache");
+            return { cachedUsers: [], userData: {} };
+        }
+    }
+
+    // Manage cache: set cache, check if reached maximum number of users
+    function setFullCache(cache) {
+        try {
+            localStorage.setItem("user_collections_cache", JSON.stringify(cache));
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
     // Fetch all collections for a given username or userid (if the user never sets a customized username)
     // We only fetch the subjects are "Done" and are rated at least 7 or not rated.
     // Source of algorithm: https://bgm.tv/group/topic/33344#post_676185
     async function fetchAllCollections(username) {
+        // Search in the cache, if exist and not expired, use cache
+        const cache = getFullCache();
+        const cachedEntry = cache.userData?.[username];
+        const currentUser = getUsername(myUsernameSelector);
+        if (cachedEntry && cachedEntry.expiryTime > Date.now()) {
+            return cachedEntry.collections;
+        } else if (cachedEntry && cachedEntry.expiryTime <= Date.now()) {
+        // Cache is expired, remove cache from cached users query and user data
+            delete cache.userData[username];
+            const index = cache.cachedUsers.indexOf(username);
+            if (index !== -1) {
+                cache.cachedUsers.splice(index, 1);
+            }
+        }
+
         // subject_type="" will search all types of subjects. Subjects type: 1 = Book (书籍), 2 = Anime (动画), 3 = Music (音乐), 4 = Game (游戏), 6 = Real (三次元), There is no 5
         // type=2 is "Done (看/读/听过)".
         // limit=50 is maximum allowed by the API
         // https://bangumi.github.io/api/#/%E6%94%B6%E8%97%8F/getUserCollectionsByUsername
-        const baseUrl = `https://api.bgm.tv/v0/users/${username}/collections?subject_type=&type=2&limit=${limit}&offset=`;
+        const baseUrl = `https://api.bgm.tv/v0/users/${username}/collections?subject_type=&type=2&limit=${LIMIT}&offset=`;
         let total = 0;
         let offset = 0;
         let collections = [];
         let loop = true;
-
-        // use cache for current login user
-        if (username === getUsername(myUsernameSelector)) {
-            const cache = checkCacheExpiryTime(username);
-            if (cache) {
-                return cache;
-            }
-        }
 
         try {
             while (loop) {
@@ -84,23 +122,38 @@
                     total = jsonData.total; // first time running, get total subjects in the collections
                 }
                 // Only keep items that the rating is >= 7 or === 0 (no rating) by user
-                const subjects = jsonData.data.filter(item => item.rate >= 7 || item.rate === 0).map(item => item.subject);
+                const subjects = jsonData.data.filter(item => item.rate >= 7 || item.rate === 0).map(item => ({
+                    id: item.subject.id,
+                    name: item.subject.name,
+                    image: item.subject.images.small
+                }));
                 collections.push(...subjects);
 
                 // Continue fetching until we've gotten all items.
-                if (offset + limit >= total) {
+                if (offset + LIMIT >= total) {
                     loop = false;
                 } else {
-                    offset = offset + limit;
+                    offset += LIMIT;
                 }
             }
-            // cache expired after 1 hour
-            const expiryTime = Date.now() + 3600 * 1000;
-            const data = {
+            // Cache expired after 1 day
+            const expiryTime = Date.now() + 3600 * 24 * 1000;
+            cache.userData[username] = {
                 collections,
                 expiryTime
             };
-            localStorage.setItem(username, JSON.stringify(data));
+            // Manage cached users query
+            if (!cache.cachedUsers.includes(username)) {
+                cache.cachedUsers.push(username);
+            }
+            // Limit of cache: 8 users
+
+            while (cache.cachedUsers.length > 8) {
+                const removed = cache.cachedUsers.find(user => user !== currentUser);
+                cache.cachedUsers = cache.cachedUsers.filter(user => user !== removed);
+                delete cache.userData[removed];
+            }
+            setFullCache(cache);
             return collections;
         } catch (error) {
             throw new Error(error);
@@ -114,11 +167,10 @@
         return array2.filter(subject => set.has(subject.id));
     }
 
-    // Create a toggle panel that displays the results
-    function createOrTogglePanel(commonSubjects, myCount, friendCount) {
+    // Create a panel that displays the results
+    function createCollapsePanel(commonSubjects, myCount, friendCount) {
         const existing = document.getElementById("syncCollapsePanel");
         if (existing) {
-            existing.hidden = !existing.hidden; // toggle fold/expand
             return;
         }
 
@@ -163,7 +215,7 @@
             link.title = subject.name;
 
             const img = document.createElement("img");
-            img.src = subject.images.small;
+            img.src = subject.image;
             img.alt = subject.name;
             Object.assign(img.style, {
                 width: "50px",
@@ -178,6 +230,14 @@
 
         panel.appendChild(grid);
         syncContainer.insertAdjacentElement("afterend", panel);
+    }
+
+    // Display or hide panel
+    function toggleCollapsePanel() {
+        const panel = document.getElementById("syncCollapsePanel");
+        if (panel) {
+            panel.hidden = !panel.hidden; // toggle panel
+        }
     }
 
     // Show a loading indicator
@@ -255,7 +315,12 @@
             const friendCollections = await fetchAllCollections(friendUsername);
             const intersection = computeIntersection(myCollections, friendCollections);
             hideLoading();
-            createOrTogglePanel(intersection, myCollections.length, friendCollections.length);
+            createCollapsePanel(intersection, myCollections.length, friendCollections.length);
+            const synchronizePanel = document.querySelector(".userSynchronize");
+            synchronizePanel.style.cursor = "pointer";
+            synchronizePanel.addEventListener("click", () => {
+                toggleCollapsePanel();
+            });
         } catch (error) {
             hideLoading();
             alert("数据获取过程中出错");
@@ -263,17 +328,36 @@
         }
     }
 
-    // Set the Synchronize panel as a clickable button to trigger the comparison
+    // Add a button to trigger the main function
     function addTriggerButton() {
-        const syncContainer = document.querySelector(".userSynchronize");
-        if (!syncContainer) {
-            console.error("Cannot find element with class 'userSynchronize'");
+        // Skip current user or users without Synchronize panel
+        if (!document.querySelector(".userSynchronize")) {
+            return;
+        }
+        const actionsContainer = document.querySelector("#headerProfile .subjectNav .headerContainer .nameSingle .inner .actions");
+        if (!actionsContainer) {
+            console.error("Cannot find element with class 'actions'");
             return;
         }
 
-        syncContainer.style.cursor = "pointer";
+        // If button is not exist, create a new button unless it is myself
+        if (document.getElementById("getCommonSubjectsBtn")) {
+            return;
+        }
+
+        const btn = document.createElement("a");
+        btn.href = "javascript:void(0)";
+        btn.id = "getCommonSubjectsBtn";
+        btn.className = "chiiBtn";
+
+        const span = document.createElement("span");
+        span.textContent = "获取共同喜好";
+        btn.appendChild(span);
+
+        actionsContainer.appendChild(btn);
+
         // When the Synchronize panel is clicked, run the comparison process
-        syncContainer.addEventListener("click", () => {
+        btn.addEventListener("click", () => {
             runComparison();
         });
     }
@@ -294,7 +378,7 @@
 
     (async () => {
         try {
-            await waitForElement(".userSynchronize");
+            await waitForElement(".actions");
             addTriggerButton();
         } catch (error) {
             console.error(error);
