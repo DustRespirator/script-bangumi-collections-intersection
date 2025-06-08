@@ -53,7 +53,7 @@
         }
     }
 
-    // Manage cache: set cache, check if reached maximum number of users
+    // Manage cache: set cache
     function setFullCache(cache) {
         try {
             localStorage.setItem("user_collections_cache", JSON.stringify(cache));
