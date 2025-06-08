@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bgm.tv 收藏对比工具
 // @namespace    https://github.com/DustRespirator
-// @version      0.4
+// @version      0.5
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
@@ -15,6 +15,9 @@
     const LIMIT = 50;
     const myUsernameSelector = "#headerNeue2 .headerNeueInner.clearit .idBadgerNeue a.avatar";
     const friendUsernameSelector = "#headerProfile .subjectNav .headerContainer .nameSingle .headerAvatar a.avatar";
+
+    // Initialize a value to check if event listener is bound to synchronize panel
+    let toggleHandlerBound = false;
 
     // Initialize cache if needed
     (function initCacheIfNeeded() {
@@ -53,7 +56,7 @@
         }
     }
 
-    // Manage cache: set cache
+    // Manage cache: set cache, check if reached maximum number of users
     function setFullCache(cache) {
         try {
             localStorage.setItem("user_collections_cache", JSON.stringify(cache));
@@ -295,11 +298,14 @@
             const intersection = computeIntersection(myCollections, friendCollections);
             hideLoading();
             createCollapsePanel(intersection, myCollections.length, friendCollections.length);
-            const synchronizePanel = document.querySelector(".userSynchronize");
-            synchronizePanel.style.cursor = "pointer";
-            synchronizePanel.addEventListener("click", () => {
-                toggleCollapsePanel();
-            });
+            if (toggleHandlerBound === false) {
+                const synchronizePanel = document.querySelector(".userSynchronize");
+                synchronizePanel.style.cursor = "pointer";
+                synchronizePanel.addEventListener("click", () => {
+                    toggleCollapsePanel();
+                });
+                toggleHandlerBound = true;
+            }
         } catch (error) {
             hideLoading();
             alert("数据获取过程中出错");
