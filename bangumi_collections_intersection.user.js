@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bgm.tv 收藏对比工具
 // @namespace    https://github.com/DustRespirator
-// @version      0.3
+// @version      0.4
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
@@ -125,7 +125,6 @@
                 cache.cachedUsers.push(username);
             }
             // Limit of cache: 8 users
-
             while (cache.cachedUsers.length > 8) {
                 const removed = cache.cachedUsers.find(user => user !== currentUser);
                 cache.cachedUsers = cache.cachedUsers.filter(user => user !== removed);
@@ -161,11 +160,13 @@
         const panel = document.createElement("div");
         panel.id = "syncCollapsePanel";
         panel.style.marginTop = "10px";
-        panel.style.background = "#f9f9f9";
-        panel.style.border = "1px solid #ccc";
-        panel.style.borderRadius = "6px";
-        panel.style.padding = "10px";
-        panel.style.boxShadow = "0 1px 4px rgba(0,0,0,0.1)";
+        panel.style.background = "#FFF";
+        panel.style.borderRadius = "5px";
+        panel.style.paddingTop = "5px";
+        panel.style.paddingRight = "10px";
+        panel.style.paddingBottom = "5px";
+        panel.style.paddingLeft = "10px";
+        panel.style.boxShadow = "0 0 5px #DDD";
 
         const header = document.createElement("div");
         header.style.fontWeight = "bold";
