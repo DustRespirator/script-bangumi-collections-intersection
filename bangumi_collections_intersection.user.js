@@ -5,6 +5,8 @@
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
+// @match        https://bangumi.tv/user/*
+// @match        https://chii.in/user/*
 // @grant        none
 // ==/UserScript==
 
