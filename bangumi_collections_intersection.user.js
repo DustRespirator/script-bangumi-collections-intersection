@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bgm.tv 收藏对比工具
 // @namespace    https://github.com/DustRespirator
-// @version      0.5
+// @version      0.6
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
@@ -15,8 +15,8 @@
 
     // Fixed configuration
     const LIMIT = 50;
-    const myUsernameSelector = "#headerNeue2 .headerNeueInner.clearit .idBadgerNeue a.avatar";
-    const friendUsernameSelector = "#headerProfile .subjectNav .headerContainer .nameSingle .headerAvatar a.avatar";
+    const myUsernameSelector = ".idBadgerNeue a.avatar";
+    const friendUsernameSelector = ".nameSingle .headerAvatar a.avatar";
 
     // Initialize a value to check if event listener is bound to synchronize panel
     let toggleHandlerBound = false;
@@ -88,37 +88,44 @@
 
         // subject_type="" will search all types of subjects. Subjects type: 1 = Book (书籍), 2 = Anime (动画), 3 = Music (音乐), 4 = Game (游戏), 6 = Real (三次元), There is no 5
         // type=2 is "Done (看/读/听过)".
-        // limit=50 is maximum allowed by the API
+        // limit=50 is the maximum value allowed by the API
         // https://bangumi.github.io/api/#/%E6%94%B6%E8%97%8F/getUserCollectionsByUsername
         const baseUrl = `https://api.bgm.tv/v0/users/${username}/collections?subject_type=&type=2&limit=${LIMIT}&offset=`;
-        let total = 0;
-        let offset = 0;
-        let collections = [];
-        let loop = true;
 
         try {
-            while (loop) {
-                const response = await fetch(baseUrl + offset);
-                const jsonData = await response.json();
-
-                if (offset === 0) {
-                    total = jsonData.total; // first time running, get total subjects in the collections
-                }
-                // Only keep items that the rating is >= 7 or === 0 (no rating) by user
-                const subjects = jsonData.data.filter(item => item.rate >= 7 || item.rate === 0).map(item => ({
-                    id: item.subject.id,
-                    name: item.subject.name,
-                    image: item.subject.images.small
-                }));
-                collections.push(...subjects);
-
-                // Continue fetching until we've gotten all items.
-                if (offset + LIMIT >= total) {
-                    loop = false;
-                } else {
-                    offset += LIMIT;
-                }
+            // The first call, get total number of subjects
+            const firstResponse = await fetch(baseUrl + "0");
+            const firstJson = await firstResponse.json();
+            const total = firstJson.total;
+            const pages = Math.ceil(total / LIMIT);
+            const allOffsets = [];
+            for (let i = 0; i < pages; i++) {
+                allOffsets.push(i * LIMIT);
             }
+            // Separate pages to groups
+            const blocks = [];
+            for (let i = 0; i < allOffsets.length; i++) {
+                const index = Math.floor(i / 8);
+                if (!blocks[index]) {
+                    blocks[index] = [];
+                }
+                blocks[index].push(allOffsets[i]);
+            }
+            // Parallel API call to get subjects
+            const results = [];
+            for (const group of blocks) {
+                const groupResults = await Promise.all(group.map(async (offset) => {
+                    const response = await fetch(baseUrl + offset);
+                    const jsonData = await response.json();
+                    return jsonData.data;
+                }));
+                results.push(...groupResults);
+            }
+            const collections = results.flat().filter(item => item.rate >= 7 || item.rate === 0).map(item => ({
+                id: item.subject.id,
+                name: item.subject.name,
+                image: item.subject.images.small
+            }));
             // Cache expired after 1 day
             const expiryTime = Date.now() + 3600 * 24 * 1000;
             cache.userData[username] = {
@@ -162,28 +169,51 @@
             return;
         }
 
+        const style = document.createElement("style");
+        style.id = "collapsePanelStyle";
+        style.textContent = `
+            #syncCollapsePanel {
+                margin-top: 10px;
+                border-radius: 5px;
+                padding: 5px 10px;
+                box-shadow: 0 0 5px #ddd;
+                background: #fff;
+                color: #000;
+            }
+            #syncCollapsePanel .header {
+                font-weight: bold;
+                font-size: 14px;
+                margin-bottom: 6px;
+            }
+            #syncCollapsePanel .summary {
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 10px;
+            }
+
+            [data-theme="dark"] #syncCollapsePanel {
+                background: #303030;
+                color: #aaa;
+                box-shadow: 0 0 5px #6e6e6e;
+            }
+            [data-theme="dark"] #syncCollapsePanel .header {
+                color: #d8d8d8;
+            }
+            [data-theme="dark"] #syncCollapsePanel .summary {
+                color: #aaa;
+            }
+        `;
+        document.head.appendChild(style);
         const panel = document.createElement("div");
         panel.id = "syncCollapsePanel";
-        panel.style.marginTop = "10px";
-        panel.style.background = "#FFF";
-        panel.style.borderRadius = "5px";
-        panel.style.paddingTop = "5px";
-        panel.style.paddingRight = "10px";
-        panel.style.paddingBottom = "5px";
-        panel.style.paddingLeft = "10px";
-        panel.style.boxShadow = "0 0 5px #DDD";
 
         const header = document.createElement("div");
-        header.style.fontWeight = "bold";
-        header.style.marginBottom = "6px";
-        header.style.fontSize = "14px";
+        header.className = "header";
         header.textContent = `共同喜好 (${commonSubjects.length})`;
         panel.appendChild(header);
 
         const summary = document.createElement("div");
-        summary.style.fontSize = "12px";
-        summary.style.color = "#666";
-        summary.style.marginBottom = "10px";
+        summary.className = "summary";
         summary.innerHTML = `我的收藏：${myCount} &nbsp;&nbsp; 对方收藏：${friendCount}`;
         panel.appendChild(summary);
 
@@ -204,7 +234,7 @@
             Object.assign(img.style, {
                 width: "50px",
                 height: "auto",
-                border: "1px solid #ccc",
+                border: "1px solid #CCC",
                 borderRadius: "3px"
             });
 
@@ -349,7 +379,7 @@
         });
     }
 
-    // In case of try to add button before the element added
+    // In case of trying to add button before the element added
     async function waitForElement(selector) {
         const timeout = 5000;
         const start = performance.now();
