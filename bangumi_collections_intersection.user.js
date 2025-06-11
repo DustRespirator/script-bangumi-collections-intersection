@@ -234,7 +234,7 @@
             Object.assign(img.style, {
                 width: "50px",
                 height: "auto",
-                border: "1px solid #CCC",
+                border: "1px solid #ccc",
                 borderRadius: "3px"
             });
 
@@ -357,7 +357,7 @@
             return;
         }
 
-        // If button is not exist, create a new button unless it is myself
+        // If button is not exist, create a new button
         if (document.getElementById("getCommonSubjectsBtn")) {
             return;
         }
