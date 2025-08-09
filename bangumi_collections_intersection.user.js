@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         bgm.tv 收藏对比工具
 // @namespace    https://github.com/DustRespirator
-// @version      0.6
+// @version      0.7
 // @description  读取已登录用户与当前个人主页用户的收藏数据，显示共同喜好条目。仅基于页面DOM获取用户名。
 // @author       Hoi
 // @match        https://bgm.tv/user/*
@@ -87,8 +87,8 @@
         }
 
         // subject_type="" will search all types of subjects. Subjects type: 1 = Book (书籍), 2 = Anime (动画), 3 = Music (音乐), 4 = Game (游戏), 6 = Real (三次元), There is no 5
-        // type=2 is "Done (看/读/听过)".
-        // limit=50 is the maximum value allowed by the API
+        // type = 2 is "Done (看/读/听过)".
+        // limit = 50 is the maximum value allowed by the API
         // https://bangumi.github.io/api/#/%E6%94%B6%E8%97%8F/getUserCollectionsByUsername
         const baseUrl = `https://api.bgm.tv/v0/users/${username}/collections?subject_type=&type=2&limit=${LIMIT}&offset=`;
 
@@ -124,7 +124,8 @@
             const collections = results.flat().filter(item => item.rate >= 7 || item.rate === 0).map(item => ({
                 id: item.subject.id,
                 name: item.subject.name,
-                image: item.subject.images.small
+                image: item.subject.images.small,
+                rate: item.rate
             }));
             // Cache expired after 1 day
             const expiryTime = Date.now() + 3600 * 24 * 1000;
@@ -219,20 +220,20 @@
 
         const grid = document.createElement("div");
         grid.style.display = "grid";
-        grid.style.gridTemplateColumns = "repeat(auto-fill, 50px)";
-        grid.style.gap = "6px";
+        grid.style.gridTemplateColumns = "repeat(auto-fill, 60px)";
+        grid.style.gap = "5px";
 
         commonSubjects.forEach(subject => {
             const link = document.createElement("a");
             link.href = `https://bgm.tv/subject/${subject.id}`;
             link.target = "_blank";
-            link.title = subject.name;
+            link.title = `${subject.name} /// 评分：${subject.rate}`;
 
             const img = document.createElement("img");
             img.src = subject.image;
             img.alt = subject.name;
             Object.assign(img.style, {
-                width: "50px",
+                width: "60px",
                 height: "auto",
                 border: "1px solid #ccc",
                 borderRadius: "3px"
@@ -357,7 +358,7 @@
             return;
         }
 
-        // If button is not exist, create a new button
+        // If button is not exist, create a new button unless it is myself
         if (document.getElementById("getCommonSubjectsBtn")) {
             return;
         }
