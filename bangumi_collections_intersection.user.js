@@ -358,7 +358,7 @@
             return;
         }
 
-        // If button is not exist, create a new button unless it is myself
+        // If button is not exist, create a new button
         if (document.getElementById("getCommonSubjectsBtn")) {
             return;
         }
