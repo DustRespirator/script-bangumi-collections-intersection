@@ -174,10 +174,10 @@
         style.id = "collapsePanelStyle";
         style.textContent = `
             #syncCollapsePanel {
-                margin-top: 10px;
-                border-radius: 5px;
-                padding: 5px 10px;
-                box-shadow: 0 0 5px #ddd;
+                margin-top: 0px;
+                border-radius: 0px;
+                padding: 5px 0px;
+                box-shadow: 0 0 0px #ddd;
                 background: #fff;
                 color: #000;
             }
@@ -229,6 +229,11 @@
             link.target = "_blank";
             link.title = `${subject.name} /// 评分：${subject.rate}`;
 
+            // Prevent clicking action on cover triggers toggleCollapsePanel()
+            link.addEventListener("click", event => {
+                event.stopPropagation();
+            });
+
             const img = document.createElement("img");
             img.src = subject.image;
             img.alt = subject.name;
@@ -244,7 +249,7 @@
         });
 
         panel.appendChild(grid);
-        syncContainer.insertAdjacentElement("afterend", panel);
+        syncContainer.appendChild(panel);
     }
 
     // Display or hide panel
@@ -252,6 +257,14 @@
         const panel = document.getElementById("syncCollapsePanel");
         if (panel) {
             panel.hidden = !panel.hidden; // toggle panel
+        }
+        if (panel.hidden) {
+            const syncContainer = document.querySelector(".userSynchronize");
+            const rectTop = syncContainer.getBoundingClientRect().top;
+            if (rectTop < 0 || rectTop > window.innerHeight) {
+                const targetScroll = window.scrollY + rectTop - 16;
+                window.scrollTo({ top: targetScroll, behavior: "auto" });
+            }
         }
     }
 
